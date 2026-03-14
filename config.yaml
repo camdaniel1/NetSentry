@@ -1,0 +1,75 @@
+server:
+  host: 127.0.0.1
+  api_port: 8000
+  dashboard_port: 8080
+  live_port: 8765
+  startup_timeout_seconds: 15
+  shutdown_timeout_seconds: 5
+  port_probe_timeout_seconds: 0.25
+
+capture:
+  bpf_filter: ""
+  queue_size: 10000
+  maintenance_interval_seconds: 30
+  live_replay_packets: 500
+  subscriber_queue_buffer: 256
+  stream_heartbeat_seconds: 15
+  interface_switch_timeout_seconds: 10
+
+detectors:
+  arp_spoof:
+    flap_window_seconds: 30
+  port_scan:
+    port_threshold: 15
+    host_threshold: 10
+    web_host_threshold: 30
+    window_seconds: 10
+  dns_tunneling:
+    query_threshold: 12
+    window_seconds: 30
+    long_label_length: 45
+    entropy_threshold: 3.6
+    ignored_suffixes:
+      - local
+      - google.com
+      - googleapis.com
+      - gstatic.com
+      - googleusercontent.com
+      - 1e100.net
+  syn_flood:
+    syn_threshold: 100
+    window_seconds: 5
+  rogue_dhcp:
+    trusted_server_ips: []
+    trusted_server_macs: []
+
+correlation:
+  grouping_window_seconds: 900
+  grouping_limit: 500
+
+evidence:
+  database_path: data/events.db
+  vault_directory: data/pcaps
+  export_directory: data/exports
+  report_directory: data/reports
+  custody_log_path: data/custody_log.jsonl
+  max_file_size_mb: 100
+  retention_days: 14
+
+response:
+  alert_threshold: high
+  webhook_timeout_seconds: 5
+
+dashboard:
+  findings_limit: 50
+  cases_limit: 15
+  timeline_limit: 100
+  evidence_files_limit: 15
+  trend_hours: 24
+  trend_top_sources: 8
+  refresh_interval_ms: 5000
+  live_render_interval_ms: 250
+  live_displayed_rows: 150
+  live_pending_packets: 500
+  health_recent_samples: 2000
+  health_saved_state_max_age_hours: 24
