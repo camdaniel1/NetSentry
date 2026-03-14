@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NetSentry dashboard</title>
+<link rel="stylesheet" href="css/dashboard.css?v=12">
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="brand">NetSentry</div>
+  <div class="nav-label">Panels</div>
+  <div id="nav">
+    <div class="nav-item active" data-panel="incidents"><span class="dot"></span>Live incidents</div>
+    <div class="nav-item" data-panel="trends"><span class="dot"></span>Trends / per detector</div>
+    <div class="nav-item" data-panel="live"><span class="dot"></span>Live network data</div>
+    <div class="nav-item" data-panel="health"><span class="dot"></span>Network health</div>
+    <div class="nav-item" data-panel="cases"><span class="dot"></span>Case management</div>
+    <div class="nav-item" data-panel="timeline"><span class="dot"></span>Timeline</div>
+    <div class="nav-item" data-panel="access"><span class="dot"></span>Access control</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <div id="panel-incidents" class="panel active">
+    <div class="panel-heading"><div><h1>Live incidents</h1><div class="subtitle">real-time detector findings</div></div><div class="panel-actions"><label for="incident-detector-filter">Filter</label><select id="incident-detector-filter" class="live-control"><option value="all">All detectors</option></select><button id="incident-detector-toggle" class="live-control">Active detectors</button><button class="live-control" data-change-interface data-status-target="incident-interface-state">Change interface</button></div></div>
+    <div class="incident-control-states"><span id="incident-detector-state" class="operation-state"></span><span id="incident-interface-state" class="operation-state"></span></div>
+    <div class="stats" id="stats"></div>
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Detector</th><th>Severity</th><th>Source IP</th><th>Summary</th><th>Response</th></tr>
+      </thead>
+      <tbody id="findings-body"></tbody>
+    </table>
+    <div class="refresh-note">auto-refreshes every 5s</div>
+  </div>
+
+  <div id="panel-trends" class="panel">
+    <div class="trends-heading">
+      <div>
+        <h1>Network trends</h1>
+        <div class="subtitle">detector activity and recurring source offenders</div>
+      </div>
+      <select id="trend-range" class="live-control trend-range">
+        <option value="6">Last 6 hours</option>
+        <option value="24" selected>Last 24 hours</option>
+        <option value="72">Last 3 days</option>
+        <option value="168">Last 7 days</option>
+      </select>
+    </div>
+    <div class="stats" id="trends-stats"></div>
+    <div class="trend-grid">
+      <section class="trend-card">
+        <h2>Finding activity</h2>
+        <div class="trend-card-subtitle">findings recorded per hour</div>
+        <div id="activity-chart" class="trend-chart"></div>
+      </section>
+      <section class="trend-card">
+        <h2>Detector distribution</h2>
+        <div class="trend-card-subtitle">which detectors are firing most often</div>
+        <div id="detector-chart"></div>
+      </section>
+      <section class="trend-card" style="grid-column: 1 / -1;">
+        <h2>Top source offenders</h2>
+        <div class="trend-card-subtitle">sources associated with the most findings</div>
+        <table class="offender-table">
+          <thead><tr><th>Source IP</th><th>Findings</th><th>Detector types</th><th>Last seen</th></tr></thead>
+          <tbody id="offender-body"></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+
+  <div id="panel-live" class="panel">
+    <div class="live-heading">
+      <h1>Live network data</h1>
+      <div id="stream-status" class="stream-status"><span class="status-dot"></span><span>connecting</span></div>
+    </div>
+    <div class="subtitle">captured packet activity as it happens · Interface: <strong data-active-interface>Loading…</strong></div>
+    <div class="live-controls">
+      <button id="live-pause" class="live-control" type="button" aria-pressed="false">Pause</button>
+      <button class="live-control" type="button" data-change-interface data-status-target="live-interface-state">Change interface</button>
+      <span id="live-interface-state" class="operation-state"></span>
+      <label for="protocol-filter">Protocol</label>
+      <select id="protocol-filter" class="live-control">
+        <option value="all">All protocols</option>
+      </select>
+    </div>
+    <div class="live-table-wrap">
+      <table id="live-table">
+        <colgroup>
+          <col style="width: 5%;">
+          <col style="width: 15%;">
+          <col style="width: 11%;">
+          <col style="width: 11%;">
+          <col style="width: 8%;">
+          <col style="width: 6%;">
+          <col style="width: 44%;">
+        </colgroup>
+        <thead>
+          <tr><th>No</th><th>Time</th><th>Src</th><th>Dst</th><th>Protocol</th><th>Len</th><th>Info</th></tr>
+        </thead>
+        <tbody id="live-body">
+          <tr><td colspan="7" class="empty">waiting for captured packets…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="refresh-note">streamed directly from the running capture pipeline</div>
+  </div>
+
+  <div id="panel-cases" class="panel">
+    <div class="panel-heading"><div><h1>Case management</h1><div class="subtitle">incident workflow, evidence vault, custody, and traffic export</div></div><div class="panel-actions"><button id="cases-group" class="live-control">Run grouping</button><button id="cases-refresh" class="live-control">Refresh</button></div></div>
+    <div id="case-operation-state" class="operation-state"></div>
+    <div class="dashboard-grid">
+      <section class="dashboard-card full-span">
+        <table class="compact-table"><thead><tr><th>Case</th><th>Detector</th><th>Source</th><th>Findings</th><th>Last seen</th><th>Status</th><th>Assignee</th></tr></thead><tbody id="cases-body"></tbody></table>
+      </section>
+      <section id="case-editor" class="dashboard-card full-span">
+        <h2>Case details</h2><div class="subtitle" id="case-editor-help">Select a case to update its workflow.</div>
+        <div class="form-grid">
+          <div class="field"><label for="case-title">Title</label><input id="case-title" disabled></div>
+          <div class="field"><label for="case-assignee">Assignee</label><input id="case-assignee" disabled></div>
+          <div class="field"><label for="case-status">Status</label><select id="case-status" disabled><option value="open">Open</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option></select></div>
+          <div class="field full-span"><label for="case-notes">Analyst notes</label><textarea id="case-notes" disabled></textarea></div>
+        </div>
+        <div style="margin-top:10px"><button id="case-save" class="action-button" disabled>Save case</button> <span id="case-save-state" class="muted"></span></div>
+      </section>
+      <section class="dashboard-card full-span">
+        <h2>Evidence operations</h2><div class="subtitle">retention and source traffic export</div>
+        <div class="evidence-tools">
+          <button id="vault-prune" class="action-button danger-button">Prune expired</button>
+          <div class="field evidence-source"><label for="traffic-source">IP or MAC source</label><input id="traffic-source" placeholder="192.168.1.10 or aa:bb:cc:dd:ee:ff"></div>
+          <button id="traffic-export" class="action-button">Export all source traffic</button>
+        </div>
+      </section>
+      <section class="dashboard-card full-span">
+        <div class="panel-heading"><div><h2>Evidence files</h2><div class="subtitle">showing the 15 most recent capture and export files</div></div><button id="vault-refresh" class="live-control">Open folder</button></div>
+        <table class="compact-table"><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Created</th><th>Custody</th><th>Actions</th></tr></thead><tbody id="vault-body"></tbody></table>
+      </section>
+      <section class="dashboard-card full-span">
+        <h2>Chain of custody</h2><div class="subtitle" id="custody-title">Select Log on a vault file to view its custody history.</div>
+        <table class="compact-table"><thead><tr><th>Time</th><th>Action</th><th>SHA-256</th><th>Size</th><th>Note</th></tr></thead><tbody id="custody-body"><tr><td colspan="5" class="empty">No file selected</td></tr></tbody></table>
+      </section>
+    </div>
+  </div>
+
+  <div id="panel-health" class="panel">
+    <h1>Network health</h1><div class="subtitle">live traffic compared with a rolling session baseline · Interface: <strong id="health-interface">Loading…</strong></div>
+    <div class="stats"><div class="stat-card"><div id="health-state" class="health-state health-normal">Learning</div><div class="label">health state</div></div><div class="stat-card"><div id="health-rate" class="count">0.0</div><div class="label">current packets/sec</div></div><div class="stat-card"><div id="health-baseline" class="count">0.0</div><div class="label">baseline packets/sec</div></div><div class="stat-card"><div id="health-deviation" class="count">0%</div><div class="label">baseline deviation</div></div><div class="stat-card"><div id="health-gaps" class="count">0</div><div class="label">stream sequence gaps</div></div></div>
+    <div class="dashboard-grid"><section class="dashboard-card"><h2>Traffic rate</h2><div class="subtitle">last 60 seconds against the rolling baseline</div><div id="health-chart" class="trend-chart"></div></section><section class="dashboard-card"><h2>Protocol mix</h2><div class="subtitle">packets observed during this dashboard session</div><div id="health-protocols"></div></section></div>
+  </div>
+
+  <div id="panel-timeline" class="panel">
+    <div class="panel-heading"><div><h1>Timeline drill-down</h1><div class="subtitle">chronological detector events with incident and evidence context</div></div><button id="timeline-refresh" class="live-control">Refresh</button></div>
+    <div class="live-controls"><label for="timeline-case">Case</label><select id="timeline-case" class="live-control"><option value="">All cases</option></select><label for="timeline-source">Source IP</label><input id="timeline-source" class="live-control" placeholder="All sources"><button id="timeline-apply" class="live-control">Apply</button><label for="report-format">Report</label><select id="report-format" class="live-control"><option value="json">JSON</option><option value="markdown">Markdown</option></select><button id="timeline-export" class="live-control">Export report</button><span id="timeline-export-state" class="operation-state"></span></div>
+    <section class="dashboard-card"><div id="timeline-list" class="timeline-list"></div></section>
+  </div>
+
+  <div id="panel-access" class="panel">
+    <h1>Access control</h1><div class="subtitle">role-based dashboard views, case actions, and operator audit history</div>
+    <div class="dashboard-grid"><section class="dashboard-card"><h2>Current operator</h2><div class="subtitle">select the local dashboard role used for API authorization</div><div class="field"><label for="access-actor">Operator</label><input id="access-actor" value="local-operator"></div><div class="field" style="margin-top:9px"><label for="access-role">Role</label><select id="access-role"><option value="viewer">Viewer</option><option value="analyst" selected>Analyst</option><option value="admin">Administrator</option></select></div><h2 style="margin-top:16px">Granted permissions</h2><div id="active-permissions" class="permission-list"></div></section><section class="dashboard-card"><h2>Role definitions</h2><div class="subtitle">capabilities enforced on protected API actions</div><div id="role-definitions"></div></section><section class="dashboard-card full-span"><h2>Recent audit activity</h2><div class="subtitle">case workflow changes performed by dashboard operators</div><table class="compact-table"><thead><tr><th>Time</th><th>Operator</th><th>Role</th><th>Action</th><th>Target</th></tr></thead><tbody id="audit-body"></tbody></table></section></div>
+  </div>
+
+</div>
+
+<script type="module" src="js/app.js?v=15"></script>
+
+</body>
+</html>

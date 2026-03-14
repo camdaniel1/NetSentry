@@ -1,0 +1,204 @@
+NetSentry — how the files fit together
+========================================
+
+This walks through the real, current wiring of the project — what
+calls what, in the order data actually flows. Not every planned file
+exists yet; anything not wired up is called out at the bottom.
+
+
+1. CAPTURE
+----------
+capture/sniffer.py
+    Opens the network interface (via Scapy) and captures raw packets.
+    Exposes list_interfaces() to enumerate adapters, and a Sniffer
+    class that pushes captured packets into a queue.
+
+capture/pcap_writer.py
+    Takes packets from the sniffer and writes them to rotating .pcap
+    files on disk. Returns exactly where each packet landed
+    (file, offset, length) — that's what makes forensic replay
+    possible later.
+    Depends on: evidence/vault.py (asks it which file to write into
+    and when to rotate).
+
+
+2. EVIDENCE STORAGE
+--------------------
+evidence/vault.py
+    Owns the pool of rotating .pcap files. Decides which file is
+    "active" right now, rotates to a new one once a size limit is
+    hit, and can prune old files past a retention window.
+    Used by: capture/pcap_writer.py.
+
+evidence/custody.py
+    Hashes a .pcap file and logs that hash to an append-only file,
+    so tampering can be detected later. Not yet called automatically
+    by anything — it's a standalone utility, ready to be wired to
+    pcap_writer.py's rotation point.
+
+
+3. DETECTION
+-------------
+detectors/base.py
+    Defines the shared interface every detector follows: a
+    process_packet() method that returns a Finding (or nothing).
+    This is what makes detectors pluggable — anything holding a list
+    of detectors can treat them all the same way.
+
+detectors/arp_spoof.py
+    The one real detector right now. Watches ARP replies, remembers
+    which MAC each IP has claimed, and flags it when an IP suddenly
+    claims a different MAC. Implements detectors/base.py's interface.
+    Can also be run standalone (python -m detectors.arp_spoof <ip>)
+    for quick testing without the full pipeline.
+
+
+4. ENRICHMENT
+--------------
+core/event.py
+    Wraps a Finding with its computed severity and (optionally)
+    where its evidence lives on disk. This is the object that
+    actually gets stored/alerted on, not the bare Finding.
+    Depends on: correlation/severity.py, detectors/base.py.
+
+correlation/severity.py
+    Scores a Finding as low / medium / high / critical. Currently
+    only has a real scoring rule for arp_spoof; anything else falls
+    back to "medium".
+    Used by: core/event.py.
+
+
+5. STORAGE
+-----------
+storage/db.py
+    Owns the SQLite connection and the findings table schema.
+
+storage/models.py
+    FindingRecord — the typed shape of one row coming back out of
+    the database (a stored Finding, plus its id/incident_id/evidence
+    fields).
+
+storage/event_store.py
+    The actual query layer: save_finding(), get_recent_findings(),
+    get_findings_by_incident(), etc. Everything else that needs to
+    read or write findings goes through this file, not db.py
+    directly.
+    Depends on: storage/db.py, storage/models.py.
+
+
+6. CORRELATION
+---------------
+correlation/grouper.py
+    Groups related findings (same source IP, close together in
+    time) into one "incident" by assigning them a shared
+    incident_id. Run periodically, not per-packet.
+    Depends on: storage/event_store.py.
+
+correlation/session_tracker.py
+    Answers "which hosts have the most findings against them
+    overall" — a triage view across all history for one host.
+    Depends on: storage/event_store.py, correlation/severity.py.
+
+
+7. RESPONSE
+------------
+response/alerting.py
+    Given a Finding, scores it and prints a colored alert to the
+    console if it's severe enough. Built to support other channels
+    (e.g. a webhook) later, but only the console one is live.
+    Depends on: correlation/severity.py.
+
+response/containment.py
+    Decides whether a Finding is severe enough to warrant blocking
+    the source IP. DRY-RUN ONLY BY DEFAULT — it logs the iptables
+    command it would run but never actually executes it unless
+    explicitly told to (live=True), which nothing in this project
+    currently does.
+    Depends on: correlation/severity.py.
+
+
+8. THE PIPELINE (ties 1–7 together)
+-------------------------------------
+core/pipeline.py
+    The only file that actually runs the whole system live. Per
+    captured packet:
+        sniffer -> pcap_writer -> every registered detector ->
+        (if a detector fires) core/event.py -> storage/event_store.py
+        -> response/alerting.py -> response/containment.py (dry-run)
+    Every 30 seconds it also calls correlation/grouper.py to group
+    any new findings into incidents.
+    It also runs a small local HTTP server that streams raw packet
+    metadata over Server-Sent Events, for the dashboard's live view.
+
+    Run it with: python -m core.pipeline <interface>
+
+
+9. FORENSICS (reads storage, doesn't touch the pipeline)
+-----------------------------------------------------------
+forensics/timeline.py
+    Given one incident_id, rebuilds it as an ordered list of what
+    happened and when.
+    Depends on: storage/event_store.py, correlation/severity.py.
+
+forensics/session_replay.py
+    Given one host's IP, rebuilds everything it's ever done as one
+    chronological narrative across all its incidents — different
+    from session_tracker.py, which just counts.
+    Depends on: storage/event_store.py, correlation/severity.py.
+
+forensics/report.py
+    Exports one incident's timeline as a JSON or Markdown file to
+    disk.
+    Depends on: forensics/timeline.py.
+
+
+10. API + DASHBOARD (the two things a person actually looks at)
+--------------------------------------------------------------------
+api/main.py
+    A small FastAPI server exposing /findings and /stats, reading
+    straight from storage/event_store.py. This is what the dashboard
+    polls every 5 seconds for the incidents list and summary counts.
+
+dashboard/index.html
+    A single static page, no build step. Two data sources:
+      - polls api/main.py every 5s for "Live incidents" and "Trends"
+      - connects directly to core/pipeline.py's SSE server for the
+        "Live network data" panel (raw packets in real time)
+    The other panels (Case management, Network health, Timeline,
+    Access control) are placeholders — the backend for those isn't
+    wired up yet, even though some of the forensics pieces above
+    exist and could feed them.
+
+
+11. TESTING AND UTILITIES
+----------------------------
+tests/test_arp_spoof.py
+    Unit tests for detectors/arp_spoof.py using hand-built packets —
+    no real network involved.
+
+scripts/simulate_arp_spoof.py
+    Sends real spoofed ARP traffic on your own network, so you can
+    watch core/pipeline.py actually catch a live attack instead of
+    just synthetic test packets. Refuses to run without an explicit
+    --i-own-this-network flag.
+
+scripts/setup_windows.bat
+    One-line helper that opens the Npcap download page for Windows
+    users (Npcap isn't reliably available via a package manager).
+
+
+WHAT'S NOT WIRED UP YET
+---------------------------
+- evidence/custody.py is never called automatically — nothing hashes
+  pcap files on rotation yet.
+- evidence/vault.py's prune_expired() is never called automatically
+  — old pcap files build up with no cleanup.
+- forensics/*.py has no API routes exposing it — the dashboard's
+  Timeline and Case management panels can't reach it yet, even
+  though the logic behind them already works.
+- Only one detector exists (arp_spoof). port_scan and dns_tunnel were
+  planned but never built — DETECTORS in core/pipeline.py is a
+  one-item list.
+- response/containment.py's live=True path (actually blocking
+  traffic) has never been exercised outside a controlled test — it
+  exists but nothing in the running pipeline turns it on.
