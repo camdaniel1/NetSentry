@@ -2,6 +2,8 @@
 
 NetSentry is a local network intrusion-detection and packet-forensics application. It captures traffic from one network interface, evaluates packets with detectors, stores findings and PCAP evidence, and presents live activity through a browser dashboard.
 
+<img width="1950" height="917" alt="Screenshot 2026-09-02 210605" src="https://github.com/user-attachments/assets/9fa8b70b-c93d-4ca7-846f-146d766542ab" />
+
 ## What it provides
 
 - Live packet metadata streamed to the dashboard
